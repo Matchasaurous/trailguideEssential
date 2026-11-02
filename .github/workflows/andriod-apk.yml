@@ -27,7 +27,9 @@ jobs:
             echo "Using $zip"
             rm -rf "$RUNNER_TEMP/tg" && mkdir -p "$RUNNER_TEMP/tg"
             unzip -q -o "$zip" -d "$RUNNER_TEMP/tg"
-            cp -a "$RUNNER_TEMP/tg/trailguard/." .
+            # Fill in only what the repository is missing: files committed to the
+            # repository always win over the copy in the zip.
+            cp -an "$RUNNER_TEMP/tg/trailguard/." .
           fi
           test -f package.json || { echo "::error::package.json is missing — upload the project files or the project zip."; exit 1; }
 

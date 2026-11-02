@@ -28,7 +28,7 @@ public class MainActivity extends BridgeActivity {
 
     /** Only a critical alert may show the app over the lock screen; leaving the app turns it off again. */
     @Override
-    protected void onStop() {
+    public void onStop() {
         showOverLockScreen(false);
         super.onStop();
     }

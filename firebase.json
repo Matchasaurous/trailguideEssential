@@ -1,0 +1,75 @@
+{
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    },
+    "database": {
+      "host": "127.0.0.1",
+      "port": 9000
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  },
+  "hosting": {
+    "public": "dist",
+    "cleanUrls": false,
+    "ignore": [
+      "**/.*",
+      "**/*.map",
+      "trailguard-config.example.js"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "SAMEORIGIN"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(self), microphone=(self), geolocation=(self), screen-wake-lock=(self), fullscreen=(self), autoplay=(self)"
+          }
+        ]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "@(index.html|sw.js|sw-background.js|registerSW.js|manifest.webmanifest|trailguard-config.js)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
+  }
+}

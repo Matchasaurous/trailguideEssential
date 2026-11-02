@@ -1,0 +1,19 @@
+{
+  "appId": "com.dnex.trailguard",
+  "appName": "Trailguard Essentials",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "useLegacyBridge": true
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#FF3B3B"
+    }
+  }
+}

@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0b1014" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Event medical, security and fire dispatch: live map, push-to-talk, bodycam, ePCR and after-action reports." />
+  <title>Trailguard Essentials</title>
+  <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <!--
+    Leaflet's CSS and JS are bundled from the npm package (imported in src/map.js)
+    rather than loaded from a CDN, so the app shell works offline and inside the
+    Capacitor Android build without a third-party network dependency.
+  -->
+  <!-- Site settings (Firebase, Apps Script URL…), editable on the server without a rebuild.
+       A missing file is fine: the app then uses its built-in .env values. -->
+  <script src="./trailguard-config.js"></script>
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <noscript>Trailguard Essentials needs JavaScript enabled.</noscript>
+
+  <!-- ============ Boot / config error ============ -->
+  <section id="screen-boot" class="screen center-screen">
+    <img class="brand-mark" src="./icons/logo.svg" alt="" aria-hidden="true" />
+    <p id="boot-message" class="muted">Starting…</p>
+  </section>
+
+  <!-- ============ Sign in / register ============ -->
+  <section id="screen-auth" class="screen center-screen" hidden>
+    <div class="card auth-card">
+      <div class="brand">
+        <img class="brand-mark" src="./icons/logo.svg" alt="" aria-hidden="true" />
+        <div>
+          <h1>Trailguard</h1>
+          <p class="muted small">Dispatch · Talk · Care</p>
+        </div>
+      </div>
+
+      <div class="segmented" role="tablist">
+        <button type="button" role="tab" id="tab-signin" class="active" aria-selected="true">Sign in</button>
+        <button type="button" role="tab" id="tab-register" aria-selected="false">Create account</button>
+      </div>
+
+      <form id="auth-form" novalidate>
+        <label class="field" id="field-name" hidden>
+          <span>Display name</span>
+          <input id="auth-name" name="name" type="text" maxlength="40" autocomplete="nickname" placeholder="e.g. Alpha 1" />
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="auth-password" name="password" type="password" minlength="8" autocomplete="current-password" required />
+        </label>
+        <p id="auth-error" class="error" role="alert" hidden></p>
+        <button id="auth-submit" class="btn primary block" type="submit">Sign in</button>
+        <button id="auth-reset" class="btn link block" type="button">Forgot password?</button>
+      </form>
+      <div id="auth-google-row" class="auth-alt" hidden>
+        <p class="auth-or"><span>or</span></p>
+        <button id="auth-google" class="btn google block" type="button">
+          <svg viewBox="0 0 48 48" aria-hidden="true" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          <span>Continue with Google</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Group picker ============ -->
+  <section id="screen-groups" class="screen" hidden>
+    <header class="page-header">
+      <div>
+        <p class="muted small">Signed in as</p>
+        <h2 id="groups-user"></h2>
+      </div>
+      <button id="btn-signout" class="btn ghost small" type="button">Sign out</button>
+    </header>
+
+    <div class="page-body">
+      <h3 class="section-title">Your groups</h3>
+      <ul id="group-list" class="list"></ul>
+      <p id="group-list-empty" class="muted small" hidden>You are not in any groups yet.</p>
+
+      <form id="join-form" class="card stack" novalidate>
+        <h3>Join with code</h3>
+        <input id="join-code" type="text" inputmode="text" autocapitalize="characters" autocomplete="off"
+               maxlength="9" placeholder="ABCD-EFGH" aria-label="Invite code" />
+        <button id="join-submit" class="btn primary block" type="submit">Join group</button>
+      </form>
+
+      <form id="create-form" class="card stack" novalidate>
+        <h3>Create a group</h3>
+        <input id="create-name" type="text" maxlength="60" placeholder="Group name" aria-label="Group name" />
+        <button id="create-submit" class="btn block" type="submit">Create group</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ Main operational view ============ -->
+  <section id="screen-main" class="screen" hidden>
+    <div id="map" aria-label="Group map"></div>
+
+    <header class="topbar">
+      <button id="btn-back" class="icon-btn" type="button" aria-label="Back to groups">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <div class="topbar-title">
+        <h2 id="main-group-name"></h2>
+        <p class="small"><span id="conn-dot" class="dot offline"></span><span id="main-status">Connecting…</span></p>
+      </div>
+      <button id="btn-announcements" class="icon-btn badge-host" type="button" aria-label="Announcements">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l7 4V6L7 10z" /><path d="M17 9.5a3.5 3.5 0 0 1 0 5M7 14l1.5 5h2.5l-1.2-4.4" /></svg>
+        <span id="announce-count" class="badge alert" hidden>0</span>
+      </button>
+      <button id="btn-dispatch" class="icon-btn badge-host" type="button" aria-label="Dispatch board">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4.5h6M9 10h6M9 14h6M9 18h3" /></svg>
+        <span id="dispatch-count" class="badge alert" hidden>0</span>
+      </button>
+      <button id="btn-members" class="icon-btn badge-host" type="button" aria-label="Members">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14c2.6.2 4.4 2.3 5 5" /></svg>
+        <span id="members-count" class="badge">0</span>
+      </button>
+    </header>
+
+    <div class="status-tools">
+      <label class="status-pill" id="status-pill" data-state="available">
+        <span class="status-dot" aria-hidden="true"></span>
+        <select id="status-select" aria-label="My status">
+          <option value="available">Available</option>
+          <option value="busy">Busy (break)</option>
+          <option value="offduty">Off duty</option>
+          <option value="locked" hidden>On a case</option>
+        </select>
+        <span id="status-lock" class="status-lock" hidden></span>
+      </label>
+      <button id="btn-role" class="role-chip" type="button" aria-label="My role and equipment">No role</button>
+      <span id="role-tag" class="role-tag" hidden>Dispatcher</span>
+    </div>
+
+    <!-- Dispatchers: members broadcasting their bodycam -->
+    <div id="live-strip" class="live-strip" hidden aria-label="Live bodycams"></div>
+
+    <!-- My active SOS -->
+    <div id="sos-banner" class="sos-banner" hidden role="status">
+      <div>
+        <strong>SOS sent</strong>
+        <p class="small" id="sos-banner-detail">Alerting your team…</p>
+      </div>
+      <div class="sos-banner-actions">
+        <a id="sos-call" class="btn small call-btn" href="tel:995">Call 995</a>
+        <button id="btn-sos-cancel" class="btn small" type="button">Cancel SOS</button>
+      </div>
+    </div>
+
+    <div class="map-tools">
+      <button id="btn-follow" class="icon-btn" type="button" aria-pressed="true" aria-label="Follow my position">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+      </button>
+      <button id="btn-fit" class="icon-btn" type="button" aria-label="Show whole group">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+      </button>
+      <button id="btn-pin" class="icon-btn pin-tool" type="button" aria-pressed="false" aria-label="Drop a case pin">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6-5.6-6-10.4A6 6 0 0 1 12 4.6a6 6 0 0 1 6 6c0 4.8-6 10.4-6 10.4z" /><path d="M12 8v5M9.5 10.5h5" /></svg>
+      </button>
+    </div>
+
+    <!-- Drop-pin mode hint -->
+    <div id="pin-hint" class="pin-hint" hidden role="status">
+      <span>Tap the map where the case is</span>
+      <button id="pin-cancel" class="btn small ghost" type="button">Cancel</button>
+    </div>
+
+    <!-- Active speaker overlay -->
+    <div id="speaker-overlay" class="speaker-overlay" hidden aria-live="polite">
+      <div class="speaker-avatar" id="speaker-avatar"></div>
+      <div>
+        <p class="small muted"><span id="speaker-channel" class="channel-tag">MAIN</span> <span id="speaker-label">Transmitting</span></p>
+        <p class="speaker-name" id="speaker-name"></p>
+      </div>
+      <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <span id="speaker-timer" class="speaker-timer">00:00</span>
+    </div>
+
+    <!-- Fire & Safety: press and hold for a rapid fire alert at my position -->
+    <button id="btn-fire" class="fire-btn" type="button" aria-label="Hold for rapid fire alert" data-feature="rapidAlert" hidden>
+      <svg class="sos-ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29" /></svg>
+      <span>FIRE</span>
+    </button>
+
+    <!-- SOS: press and hold to send -->
+    <button id="btn-sos" class="sos-btn" type="button" aria-label="Hold for SOS">
+      <svg class="sos-ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29" /></svg>
+      <span>SOS</span>
+    </button>
+
+    <!-- Tap-to-enable audio (browsers block autoplay until a user gesture) -->
+    <button id="audio-unlock" class="audio-unlock" type="button" hidden>Tap to enable channel audio</button>
+
+    <!-- Bodycam: full-screen camera on phones, docked panel on wide screens -->
+    <section id="bodycam-panel" class="bodycam" hidden aria-label="Bodycam">
+      <video id="bodycam-video" class="bodycam-video" playsinline muted autoplay></video>
+      <p id="bodycam-placeholder" class="bodycam-placeholder">Starting camera…</p>
+
+      <div class="cam-top">
+        <div class="cam-badges">
+          <span id="rec-indicator" class="rec-indicator" hidden><span class="rec-dot"></span>REC <span id="rec-time">00:00</span></span>
+          <span id="live-indicator" class="live-indicator" hidden>LIVE <span id="live-viewers"></span></span>
+        </div>
+        <div class="cam-top-actions">
+          <button id="btn-cam-min" class="cam-icon" type="button" aria-label="Minimise — keep recording and broadcasting">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <button id="btn-cam-close" class="cam-icon stop" type="button" aria-label="Stop bodycam">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+            <span>Stop</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="cam-controls" role="toolbar" aria-label="Bodycam controls">
+        <button id="btn-flip" class="cam-ctl" type="button" aria-label="Switch camera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2" /></svg>
+          <span>Switch</span>
+        </button>
+        <button id="btn-live" class="cam-ctl" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5" /><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14" /></svg>
+          <span>Broadcast</span>
+        </button>
+        <button id="btn-record" class="cam-rec" type="button" aria-label="Start recording"><span class="cam-rec-inner"></span></button>
+        <button id="btn-save-clip" class="cam-ctl" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" /><path d="M5 19h14" /></svg>
+          <span>Save</span>
+        </button>
+        <button id="btn-clips" class="cam-ctl" type="button" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M4 10h16M9 5v5M15 5v5" /></svg>
+          <span>Clips <b id="outbox-count"></b></span>
+        </button>
+      </div>
+
+      <button id="btn-cam-ptt" class="cam-ptt" type="button" aria-label="Hold to talk">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>
+      </button>
+
+      <div id="clip-drawer" class="clip-drawer" hidden>
+        <div class="clip-drawer-head">
+          <h4>Clips on this phone</h4>
+          <button id="btn-clips-close" class="btn small ghost" type="button">Done</button>
+        </div>
+        <ul id="clip-list" class="list compact"></ul>
+        <p id="clip-empty" class="muted small">Recorded clips stay here until they are saved to Drive.</p>
+        <form id="incident-form" class="incident-form" novalidate>
+          <textarea id="incident-text" rows="2" maxlength="2000" placeholder="Field note (logged with your position)"></textarea>
+          <button id="incident-submit" class="btn small" type="submit">Log note</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Live video viewer: docked beside the map so markers stay visible -->
+    <section id="viewer" class="viewer" hidden aria-label="Live video">
+      <div class="viewer-video-wrap">
+        <video id="viewer-video" playsinline autoplay muted></video>
+        <p id="viewer-wait" class="viewer-wait" hidden>Waiting for the camera…</p>
+        <span class="viewer-live">LIVE</span>
+      </div>
+      <div class="viewer-bar">
+        <div class="grow">
+          <strong id="viewer-name"></strong>
+          <p id="viewer-meta" class="small muted"></p>
+        </div>
+        <button id="viewer-follow" class="btn small" type="button" aria-pressed="true">Follow</button>
+        <button id="viewer-close" class="btn small ghost" type="button">Close</button>
+      </div>
+    </section>
+
+
+    <!-- Bottom control dock -->
+    <footer class="dock">
+      <button id="btn-track" class="dock-btn" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.1-6.5-11.2A6.5 6.5 0 0 1 12 3.3a6.5 6.5 0 0 1 6.5 6.5C18.5 14.9 12 21 12 21z" /><circle cx="12" cy="9.8" r="2.3" /></svg>
+        <span>GPS off</span>
+      </button>
+
+      <div class="ptt-wrap" data-feature="ptt">
+        <button id="ptt-channel" class="ptt-channel" type="button" data-feature="medicalChannel" hidden aria-label="Talk channel">
+          <span id="ptt-channel-label">MAIN</span>
+        </button>
+        <button id="btn-ptt" class="ptt" type="button" aria-label="Hold to talk">
+          <span class="ptt-ring" aria-hidden="true"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>
+          <span id="ptt-label" class="ptt-label">HOLD TO TALK</span>
+        </button>
+      </div>
+
+      <!-- Ushers / Marshals: no push-to-talk, a big Report button instead -->
+      <button id="btn-report-big" class="report-big" type="button" data-feature="reportOnly" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6-5.6-6-10.4A6 6 0 0 1 12 4.6a6 6 0 0 1 6 6c0 4.8-6 10.4-6 10.4z" /><path d="M12 8v5M9.5 10.5h5" /></svg>
+        <span>REPORT CASE</span>
+      </button>
+
+      <button id="btn-cam" class="dock-btn" type="button" aria-pressed="false" data-feature="bodycam">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>
+        <span>Bodycam</span>
+      </button>
+      <button id="btn-epcr-dock" class="dock-btn" type="button" data-feature="epcrDock" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M12 8v6M9 11h6M9 17h6" /></svg>
+        <span>ePCR</span>
+      </button>
+    </footer>
+  </section>
+
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+
+  <!-- Incoming request to show my camera -->
+  <div id="live-request" class="live-request" hidden role="alertdialog" aria-labelledby="live-request-title">
+    <p id="live-request-title"><strong id="live-request-name"></strong> asks to see your bodycam live.</p>
+    <label class="small"><input id="live-request-always" type="checkbox" /> Always allow dispatchers on this phone</label>
+    <div class="row-actions">
+      <button id="live-request-allow" class="btn primary" type="button">Start camera</button>
+      <button id="live-request-decline" class="btn ghost" type="button">Decline</button>
+    </div>
+  </div>
+
+
+  <!-- Members sheet -->
+  <aside id="members-sheet" class="sheet" hidden aria-label="Group members">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="invite">
+      <div>
+        <p class="small muted">Invite code</p>
+        <p id="invite-code" class="invite-code"></p>
+      </div>
+      <button id="btn-share" class="btn small" type="button">Share link</button>
+    </div>
+    <h3 class="section-title">Members</h3>
+    <ul id="member-list" class="list"></ul>
+    <div id="banned-block" hidden>
+      <h3 class="section-title">Blocked</h3>
+      <ul id="banned-list" class="list"></ul>
+    </div>
+    <h3 class="section-title">This device</h3>
+    <ul class="list compact settings-list">
+      <li>
+        <div class="grow">
+          <div class="title">Push-to-talk key</div>
+          <div class="small muted">Hold to talk from a keyboard or Bluetooth PTT button</div>
+        </div>
+        <span id="ptt-key-label" class="tag">Space bar</span>
+        <button id="btn-ptt-key" class="btn small" type="button">Change</button>
+      </li>
+      <li id="xcover-row" hidden>
+        <div class="grow">
+          <div class="title">Hardware PTT / side button</div>
+          <div class="small muted">Talk keys: <span id="native-ptt-keys">XCover (1015), STEM_PRIMARY (264), STEM_1 (265)</span>. SOS key: Top (1079), hold 1.5 s. On Samsung: Settings → Advanced features → XCover key → Control XCover key with app → Trailguard Essentials.</div>
+        </div>
+        <button id="btn-native-key" class="btn small" type="button">Add key</button>
+      </li>
+      <li id="knox-row" class="stack-row" hidden>
+        <label class="switch-row">
+          <span>
+            <span class="title">Knox PTT intents (managed devices)</span>
+            <span class="small muted">For XCover keys remapped by your IT admin (Knox Service Plugin) to send a broadcast. Press / release actions:</span>
+          </span>
+          <input id="knox-enabled" type="checkbox" checked />
+        </label>
+        <div class="knox-actions">
+          <input id="knox-press" type="text" spellcheck="false" autocapitalize="off" aria-label="Press action" />
+          <input id="knox-release" type="text" spellcheck="false" autocapitalize="off" aria-label="Release action" />
+          <button id="knox-save" class="btn small" type="button">Save</button>
+        </div>
+      </li>
+      <li data-feature="proximity">
+        <label class="grow switch-row">
+          <span>
+            <span class="title">Proximity alerts on this device</span>
+            <span class="small muted" id="device-prox-hint">Nearby cases that fit your role and equipment. Off also takes you out of auto-assign.</span>
+          </span>
+          <input id="device-prox" type="checkbox" checked />
+        </label>
+      </li>
+      <li data-feature="proximity" class="stack-row">
+        <div class="title">My alert radius <span id="device-radius-label" class="tag"></span></div>
+        <div class="radius-row">
+          <input id="device-radius" type="range" min="100" max="2000" step="50" aria-label="My proximity radius in metres" />
+          <button id="device-radius-reset" class="btn small ghost" type="button">Use group radius</button>
+        </div>
+      </li>
+      <li id="critical-row" class="stack-row">
+        <div class="title">Critical alerts</div>
+        <div class="small muted" id="critical-status">SOS, P1 cases, fire alerts and critical announcements.</div>
+        <div class="row-actions" id="critical-actions" hidden>
+          <button id="btn-dnd-access" class="btn small" type="button">Allow through Do Not Disturb</button>
+          <button id="btn-fullscreen-access" class="btn small ghost" type="button">Allow full-screen alerts</button>
+        </div>
+      </li>
+      <li id="force-volume-row" hidden>
+        <label class="grow switch-row">
+          <span>
+            <span class="title">Raise alarm volume for critical alerts</span>
+            <span class="small muted">Turns the alarm volume up to at least 80% while a critical alarm sounds, then back.</span>
+          </span>
+          <input id="force-volume" type="checkbox" checked />
+        </label>
+      </li>
+      <li>
+        <label class="grow switch-row">
+          <span>
+            <span class="title">Alarm sound</span>
+            <span class="small muted">Siren for SOS, assignments, nearby cases, announcements and reports. Vibration and on-screen alerts stay on.</span>
+          </span>
+          <input id="alarm-sound" type="checkbox" checked />
+        </label>
+      </li>
+      <li data-feature="feeds">
+        <label class="grow switch-row">
+          <span>
+            <span class="title">Open live bodycams automatically</span>
+            <span class="small muted">Dispatchers: show a member's video as soon as they start their bodycam</span>
+          </span>
+          <input id="auto-open-live" type="checkbox" checked />
+        </label>
+      </li>
+      <li data-feature="bodycam">
+        <label class="grow switch-row">
+          <span>
+            <span class="title">Auto-start bodycam for dispatchers</span>
+            <span class="small muted">When a dispatcher asks to view your camera, start it without asking</span>
+          </span>
+          <input id="auto-live" type="checkbox" />
+        </label>
+      </li>
+    </ul>
+
+    <h3 class="section-title">Archived clips</h3>
+    <ul id="archive-list" class="list compact"></ul>
+    <p id="archive-empty" class="muted small">No clips archived yet.</p>
+    <div class="sheet-actions">
+      <button id="btn-rotate" class="btn ghost small" type="button" hidden>New invite code</button>
+      <button id="btn-leave" class="btn danger-outline" type="button">Leave group</button>
+    </div>
+  </aside>
+
+  <!-- ============ Dispatch: board ============ -->
+  <aside id="dispatch-sheet" class="sheet dockable" hidden aria-label="Dispatch board">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h3>Dispatch board</h3>
+      <div class="row-actions">
+        <button id="btn-dispatch-settings" class="btn small ghost" type="button" data-feature="settings" hidden>Settings</button>
+        <button id="btn-layers" class="btn small ghost" type="button" data-feature="overlays" hidden>Map layers</button>
+        <button id="btn-reports" class="btn small ghost" type="button" data-feature="analytics" hidden>Reports</button>
+        <button id="btn-new-incident" class="btn small primary" type="button">Report case</button>
+      </div>
+    </div>
+    <div id="pending-block" hidden>
+      <h3 class="section-title pending-title">Pending review <span id="pending-count" class="tag pending"></span></h3>
+      <ul id="pending-list" class="list"></ul>
+    </div>
+    <h3 class="section-title">Active cases</h3>
+    <ul id="incident-list" class="list"></ul>
+    <p id="incident-empty" class="muted small">No active cases.</p>
+    <details id="closed-block" class="closed-block" hidden>
+      <summary class="section-title">Recently closed</summary>
+      <ul id="closed-list" class="list compact"></ul>
+    </details>
+    <h3 class="section-title">Units <span class="small muted" id="auto-mode-label"></span></h3>
+    <ul id="responder-list" class="list compact"></ul>
+  </aside>
+
+  <!-- ============ Dispatch: incident detail ============ -->
+  <aside id="incident-sheet" class="sheet dockable" hidden aria-label="Case">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="incident-head">
+      <span id="inc-badge" class="inc-badge"></span>
+      <div class="grow">
+        <h3 id="inc-title"></h3>
+        <p id="inc-meta" class="small muted"></p>
+      </div>
+      <span id="inc-state" class="tag"></span>
+    </div>
+    <p id="inc-notes" class="inc-notes"></p>
+    <div id="inc-photos" class="photo-grid" hidden></div>
+    <div class="row-actions">
+      <button id="inc-show" class="btn small" type="button">Show on map</button>
+      <a id="inc-nav" class="btn small" target="_blank" rel="noopener noreferrer">Navigate</a>
+      <label class="btn small ghost photo-add" id="inc-photo-label">
+        Add photo
+        <input id="inc-photo" type="file" accept="image/*" capture="environment" hidden />
+      </label>
+      <button id="inc-epcr" class="btn small" type="button" data-feature="epcr" hidden>Patient care (ePCR) <span id="inc-epcr-count"></span></button>
+      <button id="inc-transport" class="btn small ghost" type="button" data-feature="transport" hidden>Request transport</button>
+    </div>
+    <p id="inc-requires" class="requires-line" hidden></p>
+    <div id="inc-my-actions" class="inc-actions"></div>
+
+    <!-- Dispatcher: review a pending report -->
+    <div id="inc-review" class="review-panel" hidden>
+      <h3 class="section-title">Review report</h3>
+      <div class="field-pair">
+        <label class="field"><span>Case type</span><select id="review-type"></select></label>
+        <label class="field"><span>Severity</span>
+          <select id="review-priority">
+            <option value="1">P1 — Critical</option>
+            <option value="2">P2 — Urgent</option>
+            <option value="3">P3 — Routine</option>
+          </select>
+        </label>
+      </div>
+      <div class="field">
+        <span>Equipment requested</span>
+        <div id="review-gear" class="gear-chips"></div>
+      </div>
+      <p id="review-units" class="small muted"></p>
+      <div class="row-actions">
+        <button id="review-approve" class="btn primary" type="button">Verify — open case</button>
+        <button id="review-reject" class="btn danger-outline" type="button">Reject</button>
+      </div>
+    </div>
+
+    <!-- Dispatcher: manage a verified case -->
+    <div id="inc-dispatcher" hidden>
+      <div class="field-trio">
+        <label class="field"><span>Severity</span>
+          <select id="inc-priority">
+            <option value="1">P1 — Critical</option>
+            <option value="2">P2 — Urgent</option>
+            <option value="3">P3 — Routine</option>
+          </select>
+        </label>
+        <label class="field"><span>Status</span>
+          <select id="inc-status">
+            <option value="open">Open</option>
+            <option value="monitoring">Monitoring</option>
+          </select>
+        </label>
+        <label class="field"><span>Units needed</span>
+          <select id="inc-need">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option>
+          </select>
+        </label>
+      </div>
+      <div class="field">
+        <span>Equipment requested</span>
+        <div id="inc-gear" class="gear-chips"></div>
+      </div>
+      <h3 class="section-title">Assign units <span class="small muted">· role and equipment match first, nearest first</span></h3>
+      <ul id="inc-assign-list" class="list compact"></ul>
+      <div class="row-actions">
+        <button id="inc-close" class="btn danger-outline" type="button">Resolve &amp; close case</button>
+        <button id="inc-reopen" class="btn" type="button" hidden>Reopen</button>
+      </div>
+    </div>
+    <h3 class="section-title">Responding</h3>
+    <ul id="inc-assigned" class="list compact"></ul>
+    <h3 class="section-title">Log</h3>
+    <ol id="inc-log" class="timeline"></ol>
+    <form id="inc-note-form" class="incident-form" novalidate>
+      <textarea id="inc-note" rows="2" maxlength="500" placeholder="Add a note to the log"></textarea>
+      <button class="btn small" type="submit">Add</button>
+    </form>
+  </aside>
+
+  <!-- ============ Dispatch: new incident ============ -->
+  <aside id="incident-form-sheet" class="sheet" hidden aria-label="Report a case">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3 id="report-heading">Report a case</h3>
+    <form id="incident-create-form" class="stack" novalidate>
+      <label class="field"><span>Case type</span><select id="new-type"></select></label>
+      <p id="new-type-hint" class="small muted"></p>
+      <div class="field">
+        <span>Equipment requested <span class="muted">(shown to responders; units carrying it are preferred)</span></span>
+        <div id="new-gear" class="gear-chips"></div>
+      </div>
+      <label id="new-rapid-row" class="switch-row rapid-row" hidden>
+        <span>
+          <span class="title">Rapid fire alert</span>
+          <span class="small muted">Open the case now without review and alert everyone (critical).</span>
+        </span>
+        <input id="new-rapid" type="checkbox" checked />
+      </label>
+      <div class="field-pair">
+        <label class="field"><span>Severity</span>
+          <select id="new-priority">
+            <option value="1">P1 — Critical</option>
+            <option value="2" selected>P2 — Urgent</option>
+            <option value="3">P3 — Routine</option>
+          </select>
+        </label>
+        <label class="field" id="new-status-field"><span>Status</span>
+          <select id="new-status">
+            <option value="open" selected>Open — needs response</option>
+            <option value="monitoring">Monitoring</option>
+          </select>
+        </label>
+      </div>
+      <label class="field"><span>Title <span class="muted">(optional — taken from the details if blank)</span></span>
+        <input id="new-title" type="text" maxlength="80" placeholder="e.g. Elderly man fallen, Blk 12 lift lobby" />
+      </label>
+      <label class="field"><span>Details</span>
+        <textarea id="new-notes" rows="3" maxlength="1000" placeholder="What happened, how many people, access route, who is on scene"></textarea>
+      </label>
+      <div class="field">
+        <span>Location</span>
+        <div class="loc-choice">
+          <button id="new-use-gps" class="btn small" type="button">Use my GPS</button>
+          <button id="new-drop-pin" class="btn small" type="button">Drop pin on map</button>
+        </div>
+        <p id="new-location" class="small muted"></p>
+      </div>
+      <div class="field">
+        <span>Photos <span class="muted">(up to 3)</span></span>
+        <label class="btn small ghost photo-add">
+          Add photos
+          <input id="new-photos" type="file" accept="image/*" capture="environment" multiple hidden />
+        </label>
+        <div id="new-photo-preview" class="photo-grid small"></div>
+      </div>
+      <p id="new-review-note" class="small review-note">Reports go to dispatch for review before units are alerted. For a life-threatening emergency call 995 first, or hold SOS.</p>
+      <button id="new-submit" class="btn primary block" type="submit">Send for review</button>
+    </form>
+  </aside>
+
+  <!-- ============ Role, equipment and travel mode ============ -->
+  <aside id="role-sheet" class="sheet" hidden aria-label="Role and equipment">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3 id="role-heading">What is your role today?</h3>
+    <p class="small muted" id="role-intro">Your role decides which cases alert you and which tools you see. Tick the equipment you carry — cases that need it (e.g. an AED for a cardiac arrest) only go to units that have it. Dispatchers are appointed by the group owner.</p>
+    <ul id="role-options" class="list role-options" role="radiogroup" aria-label="Primary role"></ul>
+    <div class="field">
+      <span>Equipment I carry</span>
+      <div id="role-gear" class="gear-chips"></div>
+      <p id="role-gear-empty" class="small muted" hidden>No equipment options for this role.</p>
+    </div>
+    <div class="field">
+      <span>How I travel <span class="muted">(for ETAs and patient transport)</span></span>
+      <div id="role-mode" class="segmented small-seg" role="radiogroup" aria-label="Travel mode"></div>
+    </div>
+    <button id="role-save" class="btn primary block" type="button">Save</button>
+    <button id="role-skip" class="btn ghost block" type="button" hidden>I'm dispatching only — no field role</button>
+  </aside>
+
+  <!-- ============ Dispatch settings ============ -->
+  <aside id="settings-sheet" class="sheet" hidden aria-label="Dispatch settings">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3>Dispatch settings</h3>
+    <label class="switch-row">
+      <span>
+        <span class="title">Proximity alert system</span>
+        <span class="small muted">Master switch for the whole group. Off: no nearby-case alarms and no auto-assign; dispatch assigns by hand.</span>
+      </span>
+      <input id="set-prox-on" type="checkbox" checked />
+    </label>
+    <div class="field">
+      <span>Alert radius <strong id="set-radius-label"></strong></span>
+      <input id="set-radius" type="range" min="100" max="2000" step="50" aria-label="Proximity radius in metres" />
+      <div class="range-ends small muted"><span>100 m</span><span>Default 600 m</span><span>2000 m</span></div>
+    </div>
+    <label class="switch-row">
+      <span>
+        <span class="title">Auto-assign closest unit</span>
+        <span class="small muted">When a case is verified, the closest free unit whose role and equipment fit is locked to it (BUSY) and asked to confirm.</span>
+      </span>
+      <input id="set-auto" type="checkbox" />
+    </label>
+    <label class="field">
+      <span>Time to confirm an auto-assignment (seconds)</span>
+      <input id="set-timeout" type="number" min="30" max="600" step="10" inputmode="numeric" />
+    </label>
+    <p class="small muted">Which roles are alerted to, and may accept, each case type. SOS always alerts everyone.</p>
+    <div class="matrix-wrap"><table id="set-matrix" class="matrix"></table></div>
+    <button id="set-save" class="btn primary block" type="button">Save settings</button>
+  </aside>
+
+  <!-- ============ ePCR: patient care record ============ -->
+  <aside id="epcr-sheet" class="sheet dockable epcr" hidden aria-label="Patient care record">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div class="grow">
+        <h3>Patient care record</h3>
+        <p id="epcr-case" class="small muted"></p>
+      </div>
+      <span id="epcr-saved" class="small muted" aria-live="polite"></span>
+    </div>
+    <div id="epcr-patients" class="patient-tabs" role="tablist" aria-label="Patients on this case"></div>
+    <p id="epcr-empty" class="small muted">No patient recorded on this case yet.</p>
+    <button id="epcr-new" class="btn small primary" type="button">+ New patient</button>
+
+    <form id="epcr-form" class="epcr-form" novalidate hidden>
+      <fieldset>
+        <legend>Patient</legend>
+        <div class="field-trio">
+          <label class="field"><span>Age</span><input id="epcr-age" type="number" min="0" max="130" inputmode="numeric" /></label>
+          <label class="field"><span>Sex</span>
+            <select id="epcr-sex"><option value="">—</option><option value="M">Male</option><option value="F">Female</option><option value="X">Other</option><option value="U">Unknown</option></select>
+          </label>
+          <label class="field"><span>Triage</span>
+            <select id="epcr-triage"><option value="">—</option><option value="red">Red</option><option value="yellow">Yellow</option><option value="green">Green</option><option value="black">Black</option></select>
+          </label>
+        </div>
+        <label class="field"><span>Identifier <span class="muted">(optional — bib / wristband no.; avoid names and NRIC)</span></span>
+          <input id="epcr-ident" type="text" maxlength="60" autocomplete="off" />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>S — Subjective</legend>
+        <label class="field"><span>Chief complaint</span><input id="epcr-complaint" type="text" maxlength="200" placeholder="e.g. Chest pain 20 min, collapsed at km 18" /></label>
+        <label class="field"><span>History / events</span><textarea id="epcr-history" rows="2" maxlength="1000"></textarea></label>
+        <div class="field-pair">
+          <label class="field"><span>Allergies</span><input id="epcr-allergies" type="text" maxlength="200" placeholder="NKDA" /></label>
+          <label class="field"><span>Own medications</span><input id="epcr-ownmeds" type="text" maxlength="300" /></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>O — Objective · Vital signs</legend>
+        <div class="table-wrap"><table id="epcr-vitals" class="vitals-table"></table></div>
+        <div class="vitals-entry">
+          <label><span>HR</span><input id="v-hr" type="number" inputmode="numeric" min="0" max="300" /></label>
+          <label><span>SBP</span><input id="v-sbp" type="number" inputmode="numeric" min="0" max="300" /></label>
+          <label><span>DBP</span><input id="v-dbp" type="number" inputmode="numeric" min="0" max="250" /></label>
+          <label><span>SpO₂ %</span><input id="v-spo2" type="number" inputmode="numeric" min="0" max="100" /></label>
+          <label><span>RR</span><input id="v-rr" type="number" inputmode="numeric" min="0" max="80" /></label>
+          <label><span>Temp °C</span><input id="v-temp" type="number" inputmode="decimal" min="25" max="45" step="0.1" /></label>
+          <label><span>GCS E</span><select id="v-gcsE"><option value="">–</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label><span>GCS V</span><select id="v-gcsV"><option value="">–</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label><span>GCS M</span><select id="v-gcsM"><option value="">–</option><option>6</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label><span>BGL</span><input id="v-bgl" type="number" inputmode="decimal" min="0" max="50" step="0.1" /></label>
+          <label><span>Pain /10</span><input id="v-pain" type="number" inputmode="numeric" min="0" max="10" /></label>
+          <button id="epcr-add-vitals" class="btn small primary" type="button">Add vitals <span id="v-gcs-total"></span></button>
+        </div>
+        <label class="field"><span>Examination findings</span><textarea id="epcr-findings" rows="2" maxlength="1000"></textarea></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>A — Assessment</legend>
+        <label class="field"><span>Impression</span><textarea id="epcr-assessment" rows="2" maxlength="500"></textarea></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>P — Care given and plan</legend>
+        <ul id="epcr-treatments" class="list compact entry-list"></ul>
+        <div class="inline-add">
+          <input id="epcr-treatment" type="text" maxlength="200" placeholder="Treatment (e.g. CPR started, AED 1 shock, wound dressed)" />
+          <button id="epcr-add-treatment" class="btn small" type="button">Add</button>
+        </div>
+        <ul id="epcr-meds" class="list compact entry-list"></ul>
+        <div class="inline-add meds">
+          <input id="epcr-drug" type="text" maxlength="80" placeholder="Medication" />
+          <input id="epcr-dose" type="text" maxlength="40" placeholder="Dose" />
+          <input id="epcr-route" type="text" maxlength="30" placeholder="Route" list="epcr-routes" />
+          <datalist id="epcr-routes"><option>PO</option><option>SL</option><option>IV</option><option>IM</option><option>IN</option><option>Neb</option><option>Topical</option><option>O₂</option></datalist>
+          <button id="epcr-add-med" class="btn small" type="button">Add</button>
+        </div>
+        <label class="field"><span>Plan</span><textarea id="epcr-plan" rows="2" maxlength="500"></textarea></label>
+        <div class="field-pair">
+          <label class="field"><span>Disposition</span>
+            <select id="epcr-disposition"><option value="">Not yet decided</option><option value="released">Treated and released</option><option value="transported">Transported</option><option value="handover">Handed over</option><option value="refused">Refused care / transport</option><option value="other">Other</option></select>
+          </label>
+          <label class="field"><span>Destination</span><input id="epcr-destination" type="text" maxlength="120" placeholder="e.g. SGH A&amp;E / Medical tent 2" /></label>
+        </div>
+      </fieldset>
+
+      <div class="row-actions epcr-actions">
+        <button id="epcr-handover" class="btn primary" type="button">Handover (SOAP)</button>
+        <button id="epcr-archive" class="btn" type="button">Save to Drive</button>
+        <button id="epcr-request-transport" class="btn ghost" type="button" data-feature="transport">Request transport</button>
+        <button id="epcr-close" class="btn ghost" type="button">Close record</button>
+      </div>
+    </form>
+
+    <div id="epcr-soap-wrap" class="soap-wrap" hidden>
+      <textarea id="epcr-soap" class="soap" rows="16" readonly></textarea>
+      <div class="row-actions">
+        <button id="epcr-soap-copy" class="btn small" type="button">Copy</button>
+        <button id="epcr-soap-share" class="btn small" type="button">Share</button>
+        <button id="epcr-soap-hide" class="btn small ghost" type="button">Hide</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ Announcements ============ -->
+  <aside id="announce-sheet" class="sheet dockable" hidden aria-label="Announcements">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3>Announcements</h3>
+    <form id="announce-form" class="stack announce-form" novalidate data-feature="announce" hidden>
+      <textarea id="announce-text" rows="2" maxlength="280" placeholder="e.g. Heat advisory: extra water at km 15 and km 30"></textarea>
+      <div class="field-pair">
+        <label class="field"><span>Send to</span><select id="announce-audience"></select></label>
+        <label class="field"><span>Level</span>
+          <select id="announce-level"><option value="info">Info</option><option value="urgent">Urgent</option><option value="critical">Critical (siren, bypasses silent)</option></select>
+        </label>
+      </div>
+      <button id="announce-send" class="btn primary block" type="submit">Broadcast</button>
+    </form>
+    <ul id="announce-list" class="list announce-list"></ul>
+    <p id="announce-empty" class="small muted">No announcements yet.</p>
+  </aside>
+
+  <!-- ============ Map overlays ============ -->
+  <aside id="layers-sheet" class="sheet" hidden aria-label="Map layers">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3>Map layers</h3>
+    <p class="small muted">Upload GeoJSON or KML (e.g. exported from Google My Maps): course tracks, kilometre markers, aid stations, water points, road closures and emergency access corridors. Features are styled by their category, type or name. Everyone in the group sees visible layers.</p>
+    <label class="btn primary block photo-add">
+      Upload GeoJSON / KML
+      <input id="layer-file" type="file" accept=".geojson,.json,.kml,application/geo+json,application/vnd.google-earth.kml+xml,application/json" hidden />
+    </label>
+    <ul id="layer-list" class="list compact"></ul>
+    <p id="layer-empty" class="small muted">No layers yet.</p>
+    <div class="legend" id="layer-legend"></div>
+  </aside>
+
+  <!-- ============ After-action reports ============ -->
+  <aside id="reports-sheet" class="sheet dockable reports" hidden aria-label="After-action report">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3>After-action report</h3>
+    <div class="field-pair">
+      <label class="field"><span>From</span><input id="report-from" type="datetime-local" /></label>
+      <label class="field"><span>To</span><input id="report-to" type="datetime-local" /></label>
+    </div>
+    <div class="row-actions">
+      <button id="report-run" class="btn small" type="button">Update</button>
+      <button id="report-csv" class="btn small" type="button">Download CSV</button>
+      <button id="report-pdf" class="btn small" type="button">Download PDF</button>
+      <button id="report-drive" class="btn small primary" type="button">Save PDF to Drive</button>
+    </div>
+    <div id="report-kpis" class="kpis"></div>
+    <div id="report-body" class="report-body"></div>
+  </aside>
+
+  <!-- ============ Drop-down alert banner ============ -->
+  <section id="alert-banner" class="alert-banner" hidden role="alert" aria-live="assertive">
+    <div class="banner-top">
+      <span id="banner-kind" class="banner-kind"></span>
+      <button id="banner-mute" class="banner-mute" type="button" aria-pressed="false" aria-label="Alarm sound">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" /><path id="banner-mute-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" /></svg>
+      </button>
+    </div>
+    <h2 id="banner-title"></h2>
+    <p id="banner-meta" class="banner-meta"></p>
+    <div id="banner-actions" class="banner-actions"></div>
+    <p id="banner-more" class="small banner-more"></p>
+  </section>
+
+  <!-- ============ Full-screen alert ============ -->
+  <section id="alert-overlay" class="alert-overlay" hidden role="alertdialog" aria-labelledby="alert-title">
+    <p id="alert-kind" class="alert-kind"></p>
+    <h2 id="alert-title"></h2>
+    <p id="alert-detail" class="alert-detail"></p>
+    <p id="alert-distance" class="alert-distance"></p>
+    <div id="alert-actions" class="alert-actions"></div>
+    <p id="alert-more" class="small"></p>
+    <p class="small alert-hint">Trailguard Essentials alerts your team only. <a id="alert-call" href="tel:995">Call 995</a> for an ambulance or fire engine.</p>
+    <button id="alert-mute" class="btn small ghost alert-mute" type="button">Mute alarm sound</button>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

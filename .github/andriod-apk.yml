@@ -1,0 +1,72 @@
+# Builds the Trailguard Essentials Android app (APK) on GitHub's servers.
+# Actions tab → "Build Android APK" → Run workflow. The APK appears under the run's Artifacts.
+# Needs the repository secret TRAILGUARD_CONFIG_JS (the contents of your trailguard-config.js).
+# Optional, so updates install over the previous app:
+#   TG_KEYSTORE_BASE64, TG_KEYSTORE_PASSWORD, TG_KEY_ALIAS, TG_KEY_PASSWORD
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: App settings (Firebase, Apps Script)
+        env:
+          TRAILGUARD_CONFIG_JS: ${{ secrets.TRAILGUARD_CONFIG_JS }}
+        run: |
+          if [ -z "$TRAILGUARD_CONFIG_JS" ]; then
+            echo "::error::Add the repository secret TRAILGUARD_CONFIG_JS (the contents of your trailguard-config.js) and run again."
+            exit 1
+          fi
+          printf '%s\n' "$TRAILGUARD_CONFIG_JS" > public/trailguard-config.js
+
+      - name: Build the web app and copy it into Android
+        run: |
+          npm ci
+          npm run cap:sync
+
+      - name: Signing key (optional)
+        env:
+          TG_KEYSTORE_BASE64: ${{ secrets.TG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$TG_KEYSTORE_BASE64" ]; then
+            printf '%s' "$TG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/trailguard-release.jks"
+            echo "TG_KEYSTORE_FILE=$RUNNER_TEMP/trailguard-release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the APK
+        working-directory: android
+        env:
+          TG_KEYSTORE_PASSWORD: ${{ secrets.TG_KEYSTORE_PASSWORD }}
+          TG_KEY_ALIAS: ${{ secrets.TG_KEY_ALIAS }}
+          TG_KEY_PASSWORD: ${{ secrets.TG_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ -n "$TG_KEYSTORE_FILE" ]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trailguard-essentials-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

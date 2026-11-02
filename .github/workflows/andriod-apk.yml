@@ -1,7 +1,10 @@
-# Builds the Trailguard Essentials Android app (APK) on GitHub's servers.
-# Actions tab → "Build Android APK" → Run workflow. The APK appears under the run's Artifacts.
-# Needs the repository secret TRAILGUARD_CONFIG_JS (the contents of your trailguard-config.js).
-# Optional, so updates install over the previous app:
+# Builds the Trailguard Essentials Android app (APK) on GitHub's servers — no laptop
+# or Android Studio needed. Run it from the repository's Actions tab:
+# "Build Android APK" → Run workflow. The APK appears under the run's Artifacts.
+#
+# Needs one repository secret (Settings → Secrets and variables → Actions):
+#   TRAILGUARD_CONFIG_JS  — the whole contents of your trailguard-config.js
+# Optional, for an APK that installs over the previous one (same signature):
 #   TG_KEYSTORE_BASE64, TG_KEYSTORE_PASSWORD, TG_KEY_ALIAS, TG_KEY_PASSWORD
 name: Build Android APK
 
@@ -10,22 +13,35 @@ on:
 
 jobs:
   apk:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      # If the project was uploaded as a zip (trailguard-essentials-*.zip in the
+      # repository), unpack it over the checkout so every file is present.
+      - name: Unpack the project zip (if uploaded)
+        run: |
+          zip=$(ls trailguard-essentials-*.zip 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$zip" ]; then
+            echo "Using $zip"
+            rm -rf "$RUNNER_TEMP/tg" && mkdir -p "$RUNNER_TEMP/tg"
+            unzip -q -o "$zip" -d "$RUNNER_TEMP/tg"
+            cp -a "$RUNNER_TEMP/tg/trailguard/." .
+          fi
+          test -f package.json || { echo "::error::package.json is missing — upload the project files or the project zip."; exit 1; }
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runners already include the Android SDK (ANDROID_HOME) with
+      # its licences accepted; the Android build downloads any missing platform.
 
       - name: App settings (Firebase, Apps Script)
         env:
@@ -59,6 +75,7 @@ jobs:
           TG_KEY_PASSWORD: ${{ secrets.TG_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           if [ -n "$TG_KEYSTORE_FILE" ]; then
             ./gradlew --no-daemon assembleRelease
           else

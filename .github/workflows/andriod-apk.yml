@@ -53,6 +53,16 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$TRAILGUARD_CONFIG_JS" > public/trailguard-config.js
+          # Stop now (not after a 5-minute build) if a setting the app needs is blank. Values are never printed.
+          node -e '
+            global.window = {};
+            require(require("path").resolve("public/trailguard-config.js"));
+            const c = window.TRAILGUARD_CONFIG || {}, f = c.firebase || {};
+            const empty = ["apiKey", "authDomain", "databaseURL", "projectId", "appId"].filter((k) => !String(f[k] || "").trim()).map((k) => "firebase." + k);
+            if (!String(c.gasEndpoint || "").trim()) console.log("::warning::gasEndpoint is blank: Drive archiving and background alerts will not work in this APK.");
+            if (empty.length) { console.log("::error::The TRAILGUARD_CONFIG_JS secret has blank settings: " + empty.join(", ") + ". Paste the whole filled-in trailguard-config.js into the secret and run again."); process.exit(1); }
+            console.log("App settings: all Firebase fields are filled in.");
+          '
 
       # App icon and splash screen from your logo. Uses app-logo.png from the top
       # of the repository if you uploaded one, otherwise the logo your website

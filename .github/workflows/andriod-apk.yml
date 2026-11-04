@@ -47,12 +47,26 @@ jobs:
       - name: App settings (Firebase, Apps Script)
         env:
           TRAILGUARD_CONFIG_JS: ${{ secrets.TRAILGUARD_CONFIG_JS }}
+          # "Continue with Google" in the app: the project's Web client ID (a public id, not a
+          # secret; Firebase → Authentication → Sign-in method → Google → Web SDK configuration).
+          # A repository variable TG_GOOGLE_WEB_CLIENT_ID overrides it.
+          TG_GOOGLE_WEB_CLIENT_ID: ${{ vars.TG_GOOGLE_WEB_CLIENT_ID || '923334223308-t317gua0dq6och5bcajktgdra1juqnaq.apps.googleusercontent.com' }}
         run: |
           if [ -z "$TRAILGUARD_CONFIG_JS" ]; then
             echo "::error::Add the repository secret TRAILGUARD_CONFIG_JS (the contents of your trailguard-config.js) and run again."
             exit 1
           fi
           printf '%s\n' "$TRAILGUARD_CONFIG_JS" > public/trailguard-config.js
+          if [ -n "$TG_GOOGLE_WEB_CLIENT_ID" ]; then
+            if printf '%s' "$TG_GOOGLE_WEB_CLIENT_ID" | grep -Eq '^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$'; then
+              printf "window.TRAILGUARD_CONFIG.googleWebClientId = '%s';\n" "$TG_GOOGLE_WEB_CLIENT_ID" >> public/trailguard-config.js
+              echo "Google sign-in: on"
+            else
+              echo "::warning::TG_GOOGLE_WEB_CLIENT_ID does not look like a Web client ID (…apps.googleusercontent.com). Google sign-in stays off."
+            fi
+          else
+            echo "Google sign-in: off (no TG_GOOGLE_WEB_CLIENT_ID variable)"
+          fi
           # Stop now (not after a 5-minute build) if a setting the app needs is blank. Values are never printed.
           node -e '
             global.window = {};

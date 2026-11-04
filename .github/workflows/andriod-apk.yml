@@ -54,6 +54,108 @@ jobs:
           fi
           printf '%s\n' "$TRAILGUARD_CONFIG_JS" > public/trailguard-config.js
 
+      # App icon and splash screen from your logo. Uses app-logo.png from the top
+      # of the repository if you uploaded one, otherwise the logo your website
+      # shows (icons/icon-512.png on the app site), so one logo serves both.
+      - name: App icon and splash from your logo
+        env:
+          LOGO_URL: https://app.trailguardessentials.com/icons/icon-512.png
+        run: |
+          logo="$RUNNER_TEMP/logo.png"
+          if [ -f app-logo.png ]; then
+            cp app-logo.png "$logo"; echo "Logo: app-logo.png from the repository"
+          elif curl -fsSL "$LOGO_URL" -o "$logo"; then
+            echo "Logo: $LOGO_URL"
+          else
+            echo "::warning::No logo found (no app-logo.png, and $LOGO_URL did not load). Keeping the icons in the project."
+            exit 0
+          fi
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+          if [ ! -f scripts/make-icons.py ]; then
+            # Project zips before 1.4.6 do not carry the icon script yet.
+            mkdir -p scripts
+            cat > scripts/make-icons.py <<'PY'
+          #!/usr/bin/env python3
+          """Make every app icon from one logo picture.
+
+              python3 scripts/make-icons.py path/to/logo.png
+
+          Writes
+            assets/logo.png              1024 x 1024, for the Android icon and splash
+                                         (npx @capacitor/assets generate --android)
+            public/icons/icon-192.png    web app / install icons
+            public/icons/icon-512.png
+            public/icons/icon-maskable-512.png   (white background, logo inside the safe zone)
+            public/icons/apple-touch-icon.png    (180 x 180, white background)
+            public/icons/logo.svg, favicon.svg   (the logo, embedded)
+
+          The logo may be any size (512 px or more is best) with a transparent or plain
+          background; empty margins are trimmed and the logo is centred.
+          Needs Pillow (pip install pillow).
+          """
+          import base64
+          import io
+          import sys
+          from pathlib import Path
+
+          from PIL import Image
+
+          ROOT = Path(__file__).resolve().parent.parent
+
+
+          def trimmed(img):
+              img = img.convert('RGBA')
+              box = img.getchannel('A').getbbox()
+              if box and box != (0, 0, img.width, img.height):
+                  img = img.crop(box)
+              elif not box:
+                  raise SystemExit('The logo is completely transparent.')
+              return img
+
+
+          def placed(logo, size, fill, background=None):
+              """logo centred on a size x size canvas, its longer side `fill` of the canvas."""
+              canvas = Image.new('RGBA', (size, size), background or (0, 0, 0, 0))
+              scale = size * fill / max(logo.width, logo.height)
+              w, h = max(1, round(logo.width * scale)), max(1, round(logo.height * scale))
+              canvas.alpha_composite(logo.resize((w, h), Image.LANCZOS), ((size - w) // 2, (size - h) // 2))
+              return canvas
+
+
+          def main():
+              if len(sys.argv) != 2:
+                  raise SystemExit(__doc__)
+              logo = trimmed(Image.open(sys.argv[1]))
+              icons = ROOT / 'public' / 'icons'
+              icons.mkdir(parents=True, exist_ok=True)
+              (ROOT / 'assets').mkdir(exist_ok=True)
+              white = (255, 255, 255, 255)
+
+              placed(logo, 1024, 0.52).save(ROOT / 'assets' / 'logo.png')
+              placed(logo, 512, 0.92).save(icons / 'icon-512.png')
+              placed(logo, 192, 0.92).save(icons / 'icon-192.png')
+              placed(logo, 512, 0.62, white).convert('RGB').save(icons / 'icon-maskable-512.png')
+              placed(logo, 180, 0.80, white).convert('RGB').save(icons / 'apple-touch-icon.png')
+
+              buf = io.BytesIO()
+              placed(logo, 256, 1.0).save(buf, 'PNG', optimize=True)
+              data = base64.b64encode(buf.getvalue()).decode('ascii')
+              svg = ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256">'
+                     f'<image width="256" height="256" href="data:image/png;base64,{data}" xlink:href="data:image/png;base64,{data}"/></svg>\n')
+              (icons / 'logo.svg').write_text(svg)
+              (icons / 'favicon.svg').write_text(svg)
+              print(f'Icons made from {sys.argv[1]} ({logo.width}x{logo.height} after trimming).')
+
+
+          if __name__ == '__main__':
+              main()
+          PY
+          fi
+          python3 scripts/make-icons.py "$logo"
+          npx -y @capacitor/assets@3 generate --android \
+            --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff' \
+            --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#0b1014'
+
       - name: Build the web app and copy it into Android
         run: |
           npm ci

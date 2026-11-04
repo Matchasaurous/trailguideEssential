@@ -1,0 +1,40 @@
+# Removes files the APK build no longer needs: the loose project files from
+# before the zip uploads, older project / site zips and stray copies. Keeps the
+# workflows, README.md, app-logo.png (if any) and the newest zip of each kind.
+# Run it from Actions → "Clean up old files" → Run workflow. Git history keeps
+# every removed file, so anything can be restored.
+name: Clean up old files
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Keep only the workflows, README and the newest zips
+        run: |
+          newest() { ls -1 $1 2>/dev/null | sort -V | tail -n 1; }
+          keep_project=$(newest 'trailguard-essentials-*.zip')
+          keep_site=$(newest 'trailguard-site-*.zip')
+          echo "Keeping: .github/workflows, README.md, app-logo.png, $keep_project, $keep_site"
+          git ls-files | while read -r f; do
+            case "$f" in
+              .github/workflows/*|README.md|app-logo.png|"$keep_project"|"$keep_site") ;;
+              *) git rm -q -- "$f" ;;
+            esac
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            echo "Nothing to remove."
+          else
+            git diff --cached --name-only | sed 's/^/Removed: /'
+            git commit -q -m "Remove old project files and zips (the newest zip has everything)"
+            git push
+          fi

@@ -5,7 +5,7 @@
 # Needs one repository secret (Settings → Secrets and variables → Actions):
 #   TRAILGUARD_CONFIG_JS  — the whole contents of your trailguard-config.js
 # Optional, for an APK that installs over the previous one (same signature):
-#   TG_KEYSTORE_BASE64, TG_KEYSTORE_PASSWORD, TG_KEY_ALIAS, TG_KEY_PASSWORD
+#   TG_KEYSTORE_BASE64, TG_KEYSTORE_PASSWORD, TG_KEY_ALIAS (TG_KEY_PASSWORD is optional)
 name: Build Android APK
 
 on:
@@ -188,18 +188,44 @@ jobs:
       - name: Signing key (optional)
         env:
           TG_KEYSTORE_BASE64: ${{ secrets.TG_KEYSTORE_BASE64 }}
+          TG_KEYSTORE_PASSWORD: ${{ secrets.TG_KEYSTORE_PASSWORD }}
+          TG_KEY_ALIAS: ${{ secrets.TG_KEY_ALIAS }}
         run: |
-          if [ -n "$TG_KEYSTORE_BASE64" ]; then
-            printf '%s' "$TG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/trailguard-release.jks"
-            echo "TG_KEYSTORE_FILE=$RUNNER_TEMP/trailguard-release.jks" >> "$GITHUB_ENV"
+          if [ -z "$TG_KEYSTORE_BASE64" ]; then
+            echo "No signing key secrets: building a debug APK."
+            exit 0
           fi
+          # Pasted values often pick up spaces or line breaks: drop them.
+          trim() { printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+          store_pw=$(trim "$TG_KEYSTORE_PASSWORD")
+          alias=$(trim "$TG_KEY_ALIAS")
+          [ -n "$alias" ] || alias=trailguard
+          jks="$RUNNER_TEMP/trailguard-release.jks"
+          if ! printf '%s' "$TG_KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > "$jks" 2>/dev/null; then
+            echo "::error::TG_KEYSTORE_BASE64 is not valid: copy the whole long line again from trailguard-signing-secrets.txt."
+            exit 1
+          fi
+          echo "Signing key file: $(wc -c < "$jks") bytes, sha256 $(sha256sum "$jks" | cut -c1-16)…"
+          if ! keytool -list -keystore "$jks" -storepass "$store_pw" > /dev/null 2>&1; then
+            echo "::error::The signing key did not open. Either TG_KEYSTORE_PASSWORD is wrong or TG_KEYSTORE_BASE64 was cut short (the file above should be 2672 bytes). Paste both again from trailguard-signing-secrets.txt."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$jks" -storepass "$store_pw" -alias "$alias" > /dev/null 2>&1; then
+            echo "::error::TG_KEY_ALIAS \"$alias\" is not in the signing key; it should be: trailguard"
+            exit 1
+          fi
+          # PKCS12 keys share the store password, so TG_KEY_PASSWORD is not needed.
+          echo "::add-mask::$store_pw"
+          {
+            echo "TG_KEYSTORE_FILE=$jks"
+            echo "TG_KEYSTORE_PASSWORD=$store_pw"
+            echo "TG_KEY_PASSWORD=$store_pw"
+            echo "TG_KEY_ALIAS=$alias"
+          } >> "$GITHUB_ENV"
+          echo "Signing key: OK, the APK will be signed for release."
 
       - name: Build the APK
         working-directory: android
-        env:
-          TG_KEYSTORE_PASSWORD: ${{ secrets.TG_KEYSTORE_PASSWORD }}
-          TG_KEY_ALIAS: ${{ secrets.TG_KEY_ALIAS }}
-          TG_KEY_PASSWORD: ${{ secrets.TG_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
